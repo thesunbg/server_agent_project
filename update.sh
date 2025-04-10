@@ -3,6 +3,7 @@
 # URL của file project nén
 PROJECT_URL="https://github.com/thesunbg/server_agent_project/raw/refs/heads/master/server_agent_project.tar.gz"
 #!/bin/bash
+
 DEST_DIR="/opt/server_agent"
 TEMP_FILE="/tmp/server_agent_project.tar.gz"
 SERVICE_FILE="/etc/systemd/system/server-agent.service"
