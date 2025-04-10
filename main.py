@@ -30,20 +30,14 @@ class ServerAgent:
         )
 
     def check_update(self):
-        """Kiểm tra và chuẩn bị cập nhật mà không dừng service từ bên trong"""
+        # Logic cập nhật giữ nguyên, sẽ gọi update.sh
         try:
             response = requests.get(self.update_url)
             update_info = response.json()
             if update_info['version'] > self.version:
                 logging.info(f"New version found: {update_info['version']}")
-                # Tải update.sh nhưng không chạy ngay trong tiến trình này
                 subprocess.run(["wget", update_info['update_script'], "-O", "/tmp/update.sh"])
-                # Gọi một lệnh bên ngoài để chạy update.sh sau khi thoát
-                subprocess.Popen(["bash", "/tmp/update.sh"], start_new_session=True)
-                # Thoát tiến trình hiện tại để update.sh xử lý tiếp
-                logging.info("Initiating update process, exiting current instance")
-                self.stop()
-                sys.exit(0)  # Thoát Python để update.sh tiếp quản
+                subprocess.run(["bash", "/tmp/update.sh"])
         except Exception as e:
             logging.error(f"Update failed: {str(e)}")
 
