@@ -6,6 +6,7 @@ import json
 from datetime import datetime
 import logging
 import os
+import re
 
 class ServerMonitor:
     def __init__(self, data_dir):
