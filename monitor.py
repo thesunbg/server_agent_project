@@ -12,29 +12,48 @@ class ServerMonitor:
         self.data_dir = data_dir
 
     def parse_dmidecode(self, dmi_output):
-        """Phân tích đầu ra dmidecode thành dictionary"""
-        dmi_data = {}
+        """Phân tích đầu ra dmidecode thành JSON chuẩn"""
+        dmi_data = {
+            "bios": {},
+            "system": {},
+            "memory_devices": [],
+            "processors": []
+        }
         current_section = None
+        current_type = None
         
         # Chia nhỏ đầu ra thành các dòng
         lines = dmi_output.splitlines()
         
         for line in lines:
             line = line.strip()
-            # Bỏ qua dòng trống hoặc dòng comment
             if not line or line.startswith('#'):
                 continue
             
-            # Phát hiện bắt đầu một section mới (Handle)
+            # Phát hiện section mới
             if line.startswith('Handle'):
-                current_section = {}
-                dmi_data[line] = current_section
+                match = re.search(r'DMI type (\d+)', line)
+                if match:
+                    current_type = int(match.group(1))
+                    current_section = {}
                 continue
             
-            # Phân tích các cặp key-value
+            # Phân tích key-value
             if ':' in line and current_section is not None:
                 key, value = [part.strip() for part in line.split(':', 1)]
                 current_section[key] = value
+                
+                # Khi gặp dòng cuối của section, lưu vào đúng loại
+                if key == "Type" and "Handle" in line:
+                    if current_type == 0:  # BIOS
+                        dmi_data["bios"] = current_section
+                    elif current_type == 1:  # System
+                        dmi_data["system"] = current_section
+                    elif current_type == 17:  # Memory Device
+                        dmi_data["memory_devices"].append(current_section)
+                    elif current_type == 4:  # Processor
+                        dmi_data["processors"].append(current_section)
+                    current_section = None
         
         return dmi_data
 
@@ -48,11 +67,14 @@ class ServerMonitor:
             dmi_info = subprocess.check_output(["dmidecode"], universal_newlines=True, stderr=subprocess.STDOUT)
             parsed_dmi = self.parse_dmidecode(dmi_info)
             
+            # Phân tích thành JSON chuẩn
+            parsed_dmi = self.parse_dmidecode(dmi_info)
+            
             # Tạo dữ liệu JSON
             system_info = {
                 "timestamp": datetime.now().isoformat(),
                 "hostname": os.uname().nodename,
-                "dmidecode": parsed_dmi
+                "hardware_info": parsed_dmi
             }
             
             output_file = self.data_dir / "system_info.json"
