@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # URL của file project nén
-PROJECT_URL="http://your-update-server.com/server_agent_project.tar.gz"
+PROJECT_URL="https://github.com/thesunbg/server_agent_project/raw/refs/heads/master/server_agent_project.tar.gz"
 # Thư mục đích
 DEST_DIR="/opt/server_agent"
 # File tạm

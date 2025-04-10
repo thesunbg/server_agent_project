@@ -1,4 +1,4 @@
 {
     "version": "1.0.1",
-    "update_script": "http://your-update-server.com/update.sh"
+    "update_script": "https://raw.githubusercontent.com/thesunbg/server_agent_project/refs/heads/master/update.sh"
   }
