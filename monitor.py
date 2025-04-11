@@ -76,6 +76,7 @@ class ServerMonitor:
             system_info = {
                 "timestamp": datetime.now().isoformat(),
                 "hostname": os.uname().nodename,
+                "publicip": self.get_public_ip(),
                 "hardware_info": parsed_dmi
             }
             
