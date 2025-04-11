@@ -7,6 +7,7 @@ from datetime import datetime
 import logging
 import os
 import re
+import requests
 
 class ServerMonitor:
     def __init__(self, data_dir):
@@ -163,49 +164,76 @@ class ServerMonitor:
             return []
 
     def detect_firewall(self):
-        """Phát hiện firewall đang sử dụng mà không phụ thuộc dpkg"""
+        """Phát hiện firewall và liệt kê rules chi tiết"""
         firewall_info = {
-            "ufw": {"installed": False, "active": False},
-            "iptables": {"installed": False, "rules": 0},
-            "nftables": {"installed": False, "rules": False},
-            "firewalld": {"installed": False, "active": False}
+            "ufw": {"installed": False, "active": False, "rules": []},
+            "iptables": {"installed": False, "rules": []},
+            "nftables": {"installed": False, "rules": ""},
+            "firewalld": {"installed": False, "active": False, "rules": []}
         }
         
         # Kiểm tra UFW
         try:
-            if os.path.exists("/usr/sbin/ufw"):  # Kiểm tra file thực thi
+            if os.path.exists("/usr/sbin/ufw"):
                 firewall_info["ufw"]["installed"] = True
-            status = subprocess.check_output(["ufw", "status"], universal_newlines=True)
+            status = subprocess.check_output(["ufw", "status", "verbose"], universal_newlines=True)
             if "Status: active" in status:
                 firewall_info["ufw"]["active"] = True
+                # Lấy rules từ UFW
+                lines = status.splitlines()
+                for line in lines:
+                    if "ALLOW" in line or "DENY" in line or "REJECT" in line:
+                        firewall_info["ufw"]["rules"].append(line.strip())
         except (subprocess.CalledProcessError, FileNotFoundError):
             pass
         
         # Kiểm tra iptables
         try:
-            if os.path.exists("/sbin/iptables"):  # Kiểm tra file thực thi
+            if os.path.exists("/sbin/iptables"):
                 firewall_info["iptables"]["installed"] = True
-            rules = subprocess.check_output(["iptables", "-L", "-v", "-n"], universal_newlines=True)
-            firewall_info["iptables"]["rules"] = len(rules.splitlines()) - 8  # Bỏ header/footer
+            rules = subprocess.check_output(["iptables", "-L", "-v", "-n", "--line-numbers"], universal_newlines=True)
+            # Phân tích rules
+            current_chain = None
+            for line in rules.splitlines():
+                if line.startswith("Chain"):
+                    current_chain = line.split()[1]
+                elif line and not line.startswith("num") and current_chain:
+                    parts = line.split()
+                    if len(parts) >= 8:  # Đảm bảo đủ trường
+                        rule = {
+                            "chain": current_chain,
+                            "num": parts[0],
+                            "target": parts[1],
+                            "protocol": parts[2],
+                            "source": parts[4],
+                            "destination": parts[5]
+                        }
+                        firewall_info["iptables"]["rules"].append(rule)
         except (subprocess.CalledProcessError, FileNotFoundError):
             pass
         
         # Kiểm tra nftables
         try:
-            if os.path.exists("/usr/sbin/nft"):  # Kiểm tra file thực thi
+            if os.path.exists("/usr/sbin/nft"):
                 firewall_info["nftables"]["installed"] = True
             rules = subprocess.check_output(["nft", "list", "ruleset"], universal_newlines=True)
-            firewall_info["nftables"]["rules"] = bool(rules.strip())
+            firewall_info["nftables"]["rules"] = rules.strip() if rules.strip() else "No rules defined"
         except (subprocess.CalledProcessError, FileNotFoundError):
             pass
         
         # Kiểm tra firewalld
         try:
-            if os.path.exists("/usr/sbin/firewall-cmd"):  # Kiểm tra file thực thi
+            if os.path.exists("/usr/sbin/firewall-cmd"):
                 firewall_info["firewalld"]["installed"] = True
             status = subprocess.check_output(["firewall-cmd", "--state"], universal_newlines=True)
             if "running" in status:
                 firewall_info["firewalld"]["active"] = True
+                # Lấy rules từ firewalld
+                rules = subprocess.check_output(["firewall-cmd", "--list-all"], universal_newlines=True)
+                lines = rules.splitlines()
+                for line in lines:
+                    if "services:" in line or "ports:" in line or "rules:" in line:
+                        firewall_info["firewalld"]["rules"].append(line.strip())
         except (subprocess.CalledProcessError, FileNotFoundError):
             pass
         
@@ -213,9 +241,9 @@ class ServerMonitor:
         active_firewall = "unknown"
         if firewall_info["ufw"]["active"]:
             active_firewall = "ufw"
-        elif firewall_info["iptables"]["rules"] > 0:
+        elif firewall_info["iptables"]["rules"]:
             active_firewall = "iptables"
-        elif firewall_info["nftables"]["rules"]:
+        elif firewall_info["nftables"]["rules"] and firewall_info["nftables"]["rules"] != "No rules defined":
             active_firewall = "nftables"
         elif firewall_info["firewalld"]["active"]:
             active_firewall = "firewalld"
@@ -230,3 +258,15 @@ class ServerMonitor:
             }, f, indent=2)
         logging.info(f"Firewall info saved to {output_file}")
         return firewall_info
+
+    def get_public_ip(self):
+        """Lấy địa chỉ IP public của server"""
+        try:
+            response = requests.get("curl https://whois.inet.vn/api/ifconfig", timeout=5)
+            response.raise_for_status()  # Kiểm tra lỗi HTTP
+            ip = response.text.strip()
+            logging.info(f"Public IP retrieved: {ip}")
+            return ip
+        except requests.RequestException as e:
+            logging.error(f"Failed to get public IP: {str(e)}")
+            return "unknown"

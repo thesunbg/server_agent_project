@@ -48,10 +48,11 @@ class ServerAgent:
             if current_day != last_day_check:
                 self.check_update()
                 self.monitor.get_system_info()
+                self.monitor.detect_firewall()
+                self.monitor.get_public_ip()
                 last_day_check = current_day
             self.monitor.get_resource_usage()
             self.monitor.get_running_services()
-            self.monitor.detect_firewall()
             time.sleep(300)
 
     def start(self):
