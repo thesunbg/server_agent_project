@@ -111,14 +111,18 @@ class ServerMonitor:
     def get_resource_usage(self):
         """Lấy thông tin sử dụng tài nguyên"""
         try:
-            cpu_percent = psutil.cpu_percent(interval=1)
             memory = psutil.virtual_memory()
             disk = psutil.disk_usage('/')
             net_io = psutil.net_io_counters()
 
             resource_info = {
                 "timestamp": datetime.now().isoformat(),
-                "cpu_percent": cpu_percent,
+                "cpu": {
+                    "percent": psutil.cpu_percent(interval=1),
+                    "count": psutil.cpu_count(),
+                    "count_no_logical": psutil.cpu_count(logical=False),
+                    "getloadavg": psutil.getloadavg()
+                },
                 "memory": {
                     "total": memory.total / (1024*1024),  # MB
                     "available": memory.available / (1024*1024),
@@ -128,12 +132,21 @@ class ServerMonitor:
                     "total": disk.total / (1024*1024*1024),  # GB
                     "used": disk.used / (1024*1024*1024),
                     "free": disk.free / (1024*1024*1024),
-                    "percent": disk.percent
+                    "percent": disk.percent,
+                    "partitions": psutil.disk_partitions()
                 },
                 "network": {
                     "bytes_sent": net_io.bytes_sent / (1024*1024),  # MB
-                    "bytes_recv": net_io.bytes_recv / (1024*1024)
-                }
+                    "bytes_recv": net_io.bytes_recv / (1024*1024),
+                    "net_connections": psutil.net_connections(),
+                },
+                "sensors": {
+                    "temperatures": psutil.sensors_temperatures(fahrenheit=False),
+                    "fans": psutil.sensors_fans(),
+                    "battery": psutil.sensors_battery()
+                },
+                "boot_time": psutil.boot_time(),
+                "users": psutil.users()
             }
 
             with open(self.data_dir / "resource_usage.json", "w") as f:
@@ -223,15 +236,19 @@ class ServerMonitor:
                     }
                 elif line and not line.startswith("num") and current_chain:
                     parts = line.split()
-                    if len(parts) >= 8:
+                    if len(parts) >= 8:  # Đảm bảo đủ trường
                         rule = {
-                            "num": parts[0],
-                            "target": parts[1],
-                            "protocol": parts[2],
-                            "opt": parts[3],
-                            "source": parts[4],
-                            "destination": parts[5],
-                            "extra": " ".join(parts[6:]) if len(parts) > 6 else ""
+                            "num": parts[0],        # Số thứ tự
+                            "pkts": parts[1],       # Số gói tin
+                            "bytes": parts[2],      # Số byte
+                            "target": parts[3],     # Hành động (ACCEPT, DROP,...)
+                            "protocol": parts[4],   # Giao thức (tcp, udp,...)
+                            "opt": parts[5],        # Tùy chọn (--,...)
+                            "in": parts[6],         # Giao diện vào
+                            "out": parts[7],        # Giao diện ra
+                            "source": parts[8],     # Nguồn
+                            "destination": parts[9],# Đích
+                            "extra": " ".join(parts[10:]) if len(parts) > 10 else ""  # Thông tin bổ sung
                         }
                         firewall_info["iptables"]["chains"][current_chain]["rules"].append(rule)
         except (subprocess.CalledProcessError, FileNotFoundError):
