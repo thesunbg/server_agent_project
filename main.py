@@ -91,7 +91,7 @@ class ServerAgent:
         
         # Gửi dữ liệu đến server
         try:
-            headers = {"Authorization": f"Bearer {Config.MONITOR_TOKEN}"}
+            headers = {"token": f"{Config.MONITOR_TOKEN}"}
             response = self.session.post(
                 f"{Config.MONITOR_URL}",
                 json=monitor_data,
