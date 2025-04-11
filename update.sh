@@ -22,11 +22,20 @@ fi
 
 detect_os() {
     if [ -f /etc/os-release ]; then
+        # CentOS 7 và Ubuntu có /etc/os-release
         . /etc/os-release
         OS=$ID
         VERSION_ID=$VERSION_ID
+    elif [ -f /etc/redhat-release ]; then
+        # CentOS 6 dùng /etc/redhat-release
+        OS="centos"
+        VERSION_ID=$(cat /etc/redhat-release | grep -oP 'CentOS release \K[0-9]+')
+        if [ -z "$VERSION_ID" ]; then
+            echo "Cannot determine CentOS version from /etc/redhat-release."
+            exit 1
+        fi
     else
-        echo "Cannot detect OS. /etc/os-release not found."
+        echo "Cannot detect OS. Neither /etc/os-release nor /etc/redhat-release found."
         exit 1
     fi
 }
@@ -38,18 +47,25 @@ install_pip() {
         case $OS in
             ubuntu)
                 apt-get update
-                apt-get install -y python3-pip dmidecode
+                apt-get install -y python3-pip
                 ;;
             centos)
                 if [ "$VERSION_ID" = "6" ]; then
-                    # CentOS 6 cần cài đặt từ nguồn hoặc dùng get-pip.py
+                    # CentOS 6 cần cài Python 3 trước, sau đó dùng get-pip.py
+                    echo "Installing Python 3 on CentOS 6..."
+                    yum install -y centos-release-scl 2>/dev/null || true
+                    yum install -y python36 2>/dev/null || true
+                    if ! command -v python3 &> /dev/null; then
+                        echo "Python 3 not found. Please install Python 3 manually on CentOS 6."
+                        exit 1
+                    fi
                     curl -O https://bootstrap.pypa.io/pip/2.6/get-pip.py
                     python3 get-pip.py
                     rm get-pip.py
                 else
                     # CentOS 7
                     yum install -y epel-release
-                    yum install -y python3-pip dmidecode
+                    yum install -y python3-pip
                 fi
                 ;;
             *)
