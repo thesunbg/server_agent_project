@@ -163,7 +163,7 @@ class ServerMonitor:
             return []
 
     def detect_firewall(self):
-        """Phát hiện firewall đang sử dụng"""
+        """Phát hiện firewall đang sử dụng mà không phụ thuộc dpkg"""
         firewall_info = {
             "ufw": {"installed": False, "active": False},
             "iptables": {"installed": False, "rules": 0},
@@ -173,40 +173,40 @@ class ServerMonitor:
         
         # Kiểm tra UFW
         try:
-            if subprocess.call(["dpkg", "-l", "ufw"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0:
+            if os.path.exists("/usr/sbin/ufw"):  # Kiểm tra file thực thi
                 firewall_info["ufw"]["installed"] = True
             status = subprocess.check_output(["ufw", "status"], universal_newlines=True)
             if "Status: active" in status:
                 firewall_info["ufw"]["active"] = True
-        except subprocess.CalledProcessError:
+        except (subprocess.CalledProcessError, FileNotFoundError):
             pass
         
         # Kiểm tra iptables
         try:
-            if subprocess.call(["dpkg", "-l", "iptables"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0:
+            if os.path.exists("/sbin/iptables"):  # Kiểm tra file thực thi
                 firewall_info["iptables"]["installed"] = True
             rules = subprocess.check_output(["iptables", "-L", "-v", "-n"], universal_newlines=True)
             firewall_info["iptables"]["rules"] = len(rules.splitlines()) - 8  # Bỏ header/footer
-        except subprocess.CalledProcessError:
+        except (subprocess.CalledProcessError, FileNotFoundError):
             pass
         
         # Kiểm tra nftables
         try:
-            if subprocess.call(["dpkg", "-l", "nftables"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0:
+            if os.path.exists("/usr/sbin/nft"):  # Kiểm tra file thực thi
                 firewall_info["nftables"]["installed"] = True
             rules = subprocess.check_output(["nft", "list", "ruleset"], universal_newlines=True)
             firewall_info["nftables"]["rules"] = bool(rules.strip())
-        except subprocess.CalledProcessError:
+        except (subprocess.CalledProcessError, FileNotFoundError):
             pass
         
         # Kiểm tra firewalld
         try:
-            if subprocess.call(["dpkg", "-l", "firewalld"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0:
+            if os.path.exists("/usr/sbin/firewall-cmd"):  # Kiểm tra file thực thi
                 firewall_info["firewalld"]["installed"] = True
             status = subprocess.check_output(["firewall-cmd", "--state"], universal_newlines=True)
             if "running" in status:
                 firewall_info["firewalld"]["active"] = True
-        except subprocess.CalledProcessError:
+        except (subprocess.CalledProcessError, FileNotFoundError):
             pass
         
         # Xác định firewall chính đang hoạt động
