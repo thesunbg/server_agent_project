@@ -91,7 +91,9 @@ class ServerMonitor:
                 "hostname": os.uname().nodename,
                 "os": self.get_os_info(),
                 "publicip": self.get_public_ip(),
-                "hardware_info": parsed_dmi
+                "users": self.get_user_accounts(),
+                "login_history": self.login_history(),
+                "hardware_info": parsed_dmi,
             }
             
             output_file = self.data_dir / "system_info.json"
@@ -333,4 +335,117 @@ class ServerMonitor:
                 "os_id": "unknown",
                 "os_codename": "unknown",
                 "kernel": platform.release()
+            }
+
+    def get_user_accounts(self):
+        """Kiểm tra số lượng tài khoản người dùng trên máy chủ"""
+        try:
+            user_accounts = {
+                "total_users": 0,
+                "normal_users": [],  # Tài khoản người dùng thông thường (UID >= 1000)
+                "system_users": [],  # Tài khoản hệ thống (UID < 1000)
+                "details": []  # Danh sách chi tiết tất cả tài khoản
+            }
+            
+            # Đọc file /etc/passwd
+            with open("/etc/passwd", "r") as f:
+                for line in f:
+                    if line.strip() and not line.startswith("#"):
+                        # Mỗi dòng trong /etc/passwd có định dạng: username:password:UID:GID:GECOS:home_dir:shell
+                        parts = line.strip().split(":")
+                        if len(parts) >= 7:
+                            username = parts[0]
+                            uid = int(parts[2])
+                            home_dir = parts[5]
+                            shell = parts[6]
+                            
+                            user_info = {
+                                "username": username,
+                                "uid": uid,
+                                "home_dir": home_dir,
+                                "shell": shell
+                            }
+                            user_accounts["details"].append(user_info)
+                            
+                            # Phân loại tài khoản
+                            if uid >= 1000 and shell not in ["/sbin/nologin", "/bin/false"]:
+                                user_accounts["normal_users"].append(user_info)
+                            else:
+                                user_accounts["system_users"].append(user_info)
+            
+            # Tính tổng số tài khoản
+            user_accounts["total_users"] = len(user_accounts["details"])
+            user_accounts["total_normal_users"] = len(user_accounts["normal_users"])
+            user_accounts["total_system_users"] = len(user_accounts["system_users"])
+            
+            logging.info(f"User accounts: {user_accounts['total_users']} total, "
+                        f"{user_accounts['total_normal_users']} normal users, "
+                        f"{user_accounts['total_system_users']} system users")
+            return user_accounts
+        
+        except FileNotFoundError:
+            logging.error("File /etc/passwd not found")
+            return {
+                "total_users": 0,
+                "normal_users": [],
+                "system_users": [],
+                "details": []
+            }
+        except Exception as e:
+            logging.error(f"Failed to get user accounts: {str(e)}")
+            return {
+                "total_users": 0,
+                "normal_users": [],
+                "system_users": [],
+                "details": []
+            }
+
+    def get_login_history(self):
+        """Lấy lịch sử truy cập tài khoản vào server"""
+        login_history = {
+            "successful_logins": [],
+            "failed_logins": [],
+            "last_login_summary": []
+        }
+        
+        try:
+            # 1. Dùng lệnh `last` để lấy lịch sử đăng nhập (đăng nhập thành công)
+            try:
+                last_output = subprocess.check_output(
+                    ["last", "-F", "-w"],  # -F: Định dạng đầy đủ thời gian, -w: Dùng /var/log/wtmp
+                    universal_newlines=True, stderr=subprocess.STDOUT
+                )
+                for line in last_output.splitlines():
+                    if line.strip() and not line.startswith("reboot") and not line.startswith("shutdown"):
+                        parts = line.split()
+                        if len(parts) >= 8:
+                            user = parts[0]
+                            host = parts[2] if parts[2] != "in" else "local"
+                            login_time = " ".join(parts[4:8])
+                            logout_time = " ".join(parts[9:13]) if parts[9] != "still" else "still logged in"
+                            duration = parts[-2] if logout_time != "still logged in" else "N/A"
+                            
+                            login_entry = {
+                                "user": user,
+                                "host": host,
+                                "login_time": login_time,
+                                "logout_time": logout_time,
+                                "duration": duration
+                            }
+                            login_history["successful_logins"].append(login_entry)
+                            login_history["last_login_summary"].append(login_entry)
+            
+            except subprocess.CalledProcessError as e:
+                logging.error(f"Failed to run last command: {e.output}")
+            
+            logging.info(f"Login history: {len(login_history['successful_logins'])} successful, "
+                        f"{len(login_history['failed_logins'])} failed logins")
+            return login_history
+        
+        except Exception as e:
+            logging.error(f"Failed to get login history: {str(e)}")
+            return {
+                "successful_logins": [],
+                "failed_logins": [],
+                "last_login_summary": []
             }
