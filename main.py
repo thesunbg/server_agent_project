@@ -34,10 +34,10 @@ class ServerAgent:
         try:
             response = requests.get(self.update_url)
             update_info = response.json()
-            if update_info['version'] > self.version:
-                logging.info(f"New version found: {update_info['version']}")
-                subprocess.run(["wget", update_info['update_script'], "-O", "/tmp/update.sh"])
-                subprocess.run(["bash", "/tmp/update.sh"])
+            # if update_info['version'] > self.version:
+            #     logging.info(f"New version found: {update_info['version']}")
+            #     subprocess.run(["wget", update_info['update_script'], "-O", "/tmp/update.sh"])
+            #     subprocess.run(["bash", "/tmp/update.sh"])
         except Exception as e:
             logging.error(f"Update failed: {str(e)}")
 
