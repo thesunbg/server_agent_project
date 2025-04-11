@@ -4,10 +4,7 @@ import psutil
 import subprocess
 import json
 from datetime import datetime
-import logging
-import os
-import re
-import requests
+import requests, distro, platform, os, re, logging
 
 class ServerMonitor:
     def __init__(self, data_dir):
@@ -92,6 +89,7 @@ class ServerMonitor:
             system_info = {
                 "timestamp": datetime.now().isoformat(),
                 "hostname": os.uname().nodename,
+                "os": self.get_os_info(),
                 "publicip": self.get_public_ip(),
                 "hardware_info": parsed_dmi
             }
@@ -311,3 +309,28 @@ class ServerMonitor:
         except requests.RequestException as e:
             logging.error(f"Failed to get public IP: {str(e)}")
             return "unknown"
+    
+    def get_os_info(self):
+        """Lấy thông tin hệ điều hành và phiên bản"""
+        try:
+            # Cách 1: Sử dụng distro (khuyến nghị)
+            os_info = {
+                "os_name": distro.name(),
+                "os_version": distro.version(),
+                "os_id": distro.id(),  # Ví dụ: ubuntu, centos
+                "os_codename": distro.codename(),
+                "kernel": platform.release()  # Lấy phiên bản kernel
+            }
+            
+            logging.info(f"OS info: {os_info}")
+            return os_info
+        
+        except Exception as e:
+            logging.error(f"Failed to get OS info: {str(e)}")
+            return {
+                "os_name": "unknown",
+                "os_version": "unknown",
+                "os_id": "unknown",
+                "os_codename": "unknown",
+                "kernel": platform.release()
+            }

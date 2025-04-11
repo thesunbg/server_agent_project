@@ -20,7 +20,7 @@ if [ ! -d "$DEST_DIR" ] || [ ! -f "$SERVICE_FILE" ]; then
     echo "Performing initial installation..."
     apt-get update
     apt-get install -y python3 python3-pip dmidecode
-    pip3 install psutil requests
+    pip3 install psutil requests platform distro
     mkdir -p "$DEST_DIR"
     tar -xzvf "$TEMP_FILE" -C "$DEST_DIR" --strip-components=1
     chmod +x "$DEST_DIR/main.py"
