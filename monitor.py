@@ -21,42 +21,59 @@ class ServerMonitor:
             "memory_devices": [],
             "processors": []
         }
-        current_section = None
+        
+        if not dmi_output or "No SMBIOS" in dmi_output or "Permission denied" in dmi_output:
+            logging.error("dmidecode output is empty or access denied")
+            return dmi_data
+        
+        current_section = {}
         current_type = None
         
-        # Chia nhỏ đầu ra thành các dòng
-        lines = dmi_output.splitlines()
+        # Ghi log đầu ra để debug
+        logging.debug(f"dmidecode output:\n{dmi_output}")
         
-        for line in lines:
+        lines = dmi_output.splitlines()
+        for i, line in enumerate(lines):
             line = line.strip()
             if not line or line.startswith('#'):
                 continue
             
-            # Phát hiện section mới
+            # Bắt đầu một section mới với Handle
             if line.startswith('Handle'):
-                match = re.search(r'DMI type (\d+)', line)
+                if current_section and current_type is not None:
+                    if current_type == 0:
+                        dmi_data["bios"] = current_section
+                    elif current_type == 1:
+                        dmi_data["system"] = current_section
+                    elif current_type == 17:
+                        dmi_data["memory_devices"].append(current_section)
+                    elif current_type == 4:
+                        dmi_data["processors"].append(current_section)
+                current_section = {}
+                match = re.search(r'type (\d+)', line, re.I)
                 if match:
                     current_type = int(match.group(1))
-                    current_section = {}
                 continue
             
-            # Phân tích key-value
-            if ':' in line and current_section is not None:
+            # Phân tích key-value trong section
+            if ':' in line:
                 key, value = [part.strip() for part in line.split(':', 1)]
-                current_section[key] = value
-                
-                # Khi gặp dòng cuối của section, lưu vào đúng loại
-                if key == "Type" and "Handle" in line:
-                    if current_type == 0:  # BIOS
-                        dmi_data["bios"] = current_section
-                    elif current_type == 1:  # System
-                        dmi_data["system"] = current_section
-                    elif current_type == 17:  # Memory Device
-                        dmi_data["memory_devices"].append(current_section)
-                    elif current_type == 4:  # Processor
-                        dmi_data["processors"].append(current_section)
-                    current_section = None
+                if value:  # Chỉ thêm nếu có giá trị
+                    current_section[key] = value
         
+        # Lưu section cuối cùng nếu có
+        if current_section and current_type is not None:
+            if current_type == 0:
+                dmi_data["bios"] = current_section
+            elif current_type == 1:
+                dmi_data["system"] = current_section
+            elif current_type == 17:
+                dmi_data["memory_devices"].append(current_section)
+            elif current_type == 4:
+                dmi_data["processors"].append(current_section)
+        
+        # Log kết quả phân tích
+        logging.info(f"Parsed dmidecode data: {json.dumps(dmi_data, indent=2)}")
         return dmi_data
 
     def get_system_info(self):
@@ -126,48 +143,53 @@ class ServerMonitor:
             logging.error(f"Failed to get resource usage: {str(e)}")
 
     def get_running_services(self):
-        """Lấy danh sách các service đang chạy từ systemd"""
+        """Lấy tất cả các service và trạng thái của chúng từ systemd"""
         try:
-            # Lấy danh sách service đang chạy
             result = subprocess.check_output(
-                ["systemctl", "list-units", "--type=service", "--state=running"],
+                ["systemctl", "list-units", "--type=service", "--all"],
                 universal_newlines=True, stderr=subprocess.STDOUT
             )
             services = []
             lines = result.splitlines()
             
-            # Bỏ qua header và footer của systemctl
-            for line in lines[1:]:  # Bỏ dòng đầu (header)
-                if "loaded" in line and "running" in line:
+            # Bỏ qua header và footer
+            for line in lines[1:]:
+                if ".service" in line and "loaded" in line:
                     parts = line.split()
                     service_name = parts[0].replace(".service", "")
-                    description = " ".join(parts[4:])
+                    load_state = parts[1]  # loaded/not-found
+                    active_state = parts[2]  # active/inactive
+                    sub_state = parts[3]  # running/exited/dead/failed/...
+                    description = " ".join(parts[4:]) if len(parts) > 4 else "No description"
                     services.append({
                         "name": service_name,
+                        "load_state": load_state,
+                        "active_state": active_state,
+                        "sub_state": sub_state,
                         "description": description
                     })
             
-            output_file = self.data_dir / "running_services.json"
+            output_file = self.data_dir / "services.json"  # Đổi tên file để rõ ràng hơn
             with open(output_file, "w") as f:
                 json.dump({
                     "timestamp": datetime.now().isoformat(),
-                    "running_services": services
+                    "services": services
                 }, f, indent=2)
-            logging.info(f"Running services saved to {output_file}")
+            logging.info(f"All services saved to {output_file}")
             return services
         
         except subprocess.CalledProcessError as e:
-            logging.error(f"Failed to get running services: {e.output}")
+            logging.error(f"Failed to get services: {e.output}")
             return []
         except Exception as e:
-            logging.error(f"Error getting running services: {str(e)}")
+            logging.error(f"Error getting services: {str(e)}")
             return []
 
     def detect_firewall(self):
-        """Phát hiện firewall và liệt kê rules chi tiết"""
+        """Phát hiện firewall và liệt kê rules chi tiết, bao gồm tất cả chain của iptables"""
         firewall_info = {
             "ufw": {"installed": False, "active": False, "rules": []},
-            "iptables": {"installed": False, "rules": []},
+            "iptables": {"installed": False, "chains": {}},
             "nftables": {"installed": False, "rules": ""},
             "firewalld": {"installed": False, "active": False, "rules": []}
         }
@@ -179,7 +201,6 @@ class ServerMonitor:
             status = subprocess.check_output(["ufw", "status", "verbose"], universal_newlines=True)
             if "Status: active" in status:
                 firewall_info["ufw"]["active"] = True
-                # Lấy rules từ UFW
                 lines = status.splitlines()
                 for line in lines:
                     if "ALLOW" in line or "DENY" in line or "REJECT" in line:
@@ -192,23 +213,27 @@ class ServerMonitor:
             if os.path.exists("/sbin/iptables"):
                 firewall_info["iptables"]["installed"] = True
             rules = subprocess.check_output(["iptables", "-L", "-v", "-n", "--line-numbers"], universal_newlines=True)
-            # Phân tích rules
             current_chain = None
             for line in rules.splitlines():
                 if line.startswith("Chain"):
                     current_chain = line.split()[1]
+                    firewall_info["iptables"]["chains"][current_chain] = {
+                        "policy": line.split("policy")[1].strip() if "policy" in line else "unknown",
+                        "rules": []
+                    }
                 elif line and not line.startswith("num") and current_chain:
                     parts = line.split()
-                    if len(parts) >= 8:  # Đảm bảo đủ trường
+                    if len(parts) >= 8:
                         rule = {
-                            "chain": current_chain,
                             "num": parts[0],
                             "target": parts[1],
                             "protocol": parts[2],
+                            "opt": parts[3],
                             "source": parts[4],
-                            "destination": parts[5]
+                            "destination": parts[5],
+                            "extra": " ".join(parts[6:]) if len(parts) > 6 else ""
                         }
-                        firewall_info["iptables"]["rules"].append(rule)
+                        firewall_info["iptables"]["chains"][current_chain]["rules"].append(rule)
         except (subprocess.CalledProcessError, FileNotFoundError):
             pass
         
@@ -228,7 +253,6 @@ class ServerMonitor:
             status = subprocess.check_output(["firewall-cmd", "--state"], universal_newlines=True)
             if "running" in status:
                 firewall_info["firewalld"]["active"] = True
-                # Lấy rules từ firewalld
                 rules = subprocess.check_output(["firewall-cmd", "--list-all"], universal_newlines=True)
                 lines = rules.splitlines()
                 for line in lines:
@@ -241,7 +265,7 @@ class ServerMonitor:
         active_firewall = "unknown"
         if firewall_info["ufw"]["active"]:
             active_firewall = "ufw"
-        elif firewall_info["iptables"]["rules"]:
+        elif firewall_info["iptables"]["chains"]:
             active_firewall = "iptables"
         elif firewall_info["nftables"]["rules"] and firewall_info["nftables"]["rules"] != "No rules defined":
             active_firewall = "nftables"
