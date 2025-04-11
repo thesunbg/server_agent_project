@@ -50,6 +50,8 @@ class ServerAgent:
                 self.monitor.get_system_info()
                 last_day_check = current_day
             self.monitor.get_resource_usage()
+            self.monitor.get_running_services()
+            self.monitor.detect_firewall()
             time.sleep(300)
 
     def start(self):

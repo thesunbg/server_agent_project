@@ -123,3 +123,110 @@ class ServerMonitor:
 
         except Exception as e:
             logging.error(f"Failed to get resource usage: {str(e)}")
+
+    def get_running_services(self):
+        """Lấy danh sách các service đang chạy từ systemd"""
+        try:
+            # Lấy danh sách service đang chạy
+            result = subprocess.check_output(
+                ["systemctl", "list-units", "--type=service", "--state=running"],
+                universal_newlines=True, stderr=subprocess.STDOUT
+            )
+            services = []
+            lines = result.splitlines()
+            
+            # Bỏ qua header và footer của systemctl
+            for line in lines[1:]:  # Bỏ dòng đầu (header)
+                if "loaded" in line and "running" in line:
+                    parts = line.split()
+                    service_name = parts[0].replace(".service", "")
+                    description = " ".join(parts[4:])
+                    services.append({
+                        "name": service_name,
+                        "description": description
+                    })
+            
+            output_file = self.data_dir / "running_services.json"
+            with open(output_file, "w") as f:
+                json.dump({
+                    "timestamp": datetime.now().isoformat(),
+                    "running_services": services
+                }, f, indent=2)
+            logging.info(f"Running services saved to {output_file}")
+            return services
+        
+        except subprocess.CalledProcessError as e:
+            logging.error(f"Failed to get running services: {e.output}")
+            return []
+        except Exception as e:
+            logging.error(f"Error getting running services: {str(e)}")
+            return []
+
+    def detect_firewall(self):
+        """Phát hiện firewall đang sử dụng"""
+        firewall_info = {
+            "ufw": {"installed": False, "active": False},
+            "iptables": {"installed": False, "rules": 0},
+            "nftables": {"installed": False, "rules": False},
+            "firewalld": {"installed": False, "active": False}
+        }
+        
+        # Kiểm tra UFW
+        try:
+            if subprocess.call(["dpkg", "-l", "ufw"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0:
+                firewall_info["ufw"]["installed"] = True
+            status = subprocess.check_output(["ufw", "status"], universal_newlines=True)
+            if "Status: active" in status:
+                firewall_info["ufw"]["active"] = True
+        except subprocess.CalledProcessError:
+            pass
+        
+        # Kiểm tra iptables
+        try:
+            if subprocess.call(["dpkg", "-l", "iptables"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0:
+                firewall_info["iptables"]["installed"] = True
+            rules = subprocess.check_output(["iptables", "-L", "-v", "-n"], universal_newlines=True)
+            firewall_info["iptables"]["rules"] = len(rules.splitlines()) - 8  # Bỏ header/footer
+        except subprocess.CalledProcessError:
+            pass
+        
+        # Kiểm tra nftables
+        try:
+            if subprocess.call(["dpkg", "-l", "nftables"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0:
+                firewall_info["nftables"]["installed"] = True
+            rules = subprocess.check_output(["nft", "list", "ruleset"], universal_newlines=True)
+            firewall_info["nftables"]["rules"] = bool(rules.strip())
+        except subprocess.CalledProcessError:
+            pass
+        
+        # Kiểm tra firewalld
+        try:
+            if subprocess.call(["dpkg", "-l", "firewalld"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0:
+                firewall_info["firewalld"]["installed"] = True
+            status = subprocess.check_output(["firewall-cmd", "--state"], universal_newlines=True)
+            if "running" in status:
+                firewall_info["firewalld"]["active"] = True
+        except subprocess.CalledProcessError:
+            pass
+        
+        # Xác định firewall chính đang hoạt động
+        active_firewall = "unknown"
+        if firewall_info["ufw"]["active"]:
+            active_firewall = "ufw"
+        elif firewall_info["iptables"]["rules"] > 0:
+            active_firewall = "iptables"
+        elif firewall_info["nftables"]["rules"]:
+            active_firewall = "nftables"
+        elif firewall_info["firewalld"]["active"]:
+            active_firewall = "firewalld"
+        
+        firewall_info["active_firewall"] = active_firewall
+        
+        output_file = self.data_dir / "firewall_info.json"
+        with open(output_file, "w") as f:
+            json.dump({
+                "timestamp": datetime.now().isoformat(),
+                "firewall": firewall_info
+            }, f, indent=2)
+        logging.info(f"Firewall info saved to {output_file}")
+        return firewall_info
