@@ -22,6 +22,7 @@ class ServerAgent:
         self.version = Config.VERSION
         self.update_url = Config.UPDATE_URL
         self.monitor = ServerMonitor(self.data_dir)
+        self.session = requests.Session()
 
     def setup_logging(self):
         logging.basicConfig(
