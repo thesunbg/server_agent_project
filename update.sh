@@ -8,6 +8,8 @@ DEST_DIR="/opt/server_agent"
 TEMP_FILE="/tmp/server_agent_project.tar.gz"
 SERVICE_FILE="/etc/systemd/system/server-agent.service"
 
+rm -f "/tmp/update.sh"
+
 # Tải project nén
 wget "$PROJECT_URL" -O "$TEMP_FILE"
 if [ $? -ne 0 ]; then
@@ -26,16 +28,8 @@ detect_os() {
         . /etc/os-release
         OS=$ID
         VERSION_ID=$VERSION_ID
-    elif [ -f /etc/redhat-release ]; then
-        # CentOS 6 dùng /etc/redhat-release
-        OS="centos"
-        VERSION_ID=$(cat /etc/redhat-release | grep -oP 'CentOS release \K[0-9]+')
-        if [ -z "$VERSION_ID" ]; then
-            echo "Cannot determine CentOS version from /etc/redhat-release."
-            exit 1
-        fi
     else
-        echo "Cannot detect OS. Neither /etc/os-release nor /etc/redhat-release found."
+        echo "Cannot detect OS. /etc/os-release not found."
         exit 1
     fi
 }

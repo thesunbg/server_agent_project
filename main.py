@@ -5,6 +5,7 @@ import time
 import logging
 import os
 import sys
+import json
 import requests
 import threading
 import subprocess
@@ -52,6 +53,7 @@ class ServerAgent:
                 last_day_check = current_day
             self.monitor.get_resource_usage()
             self.monitor.get_running_services()
+            self.send_to_server()
             time.sleep(300)
 
     def start(self):
@@ -62,6 +64,43 @@ class ServerAgent:
     def stop(self):
         self.running = False
         logging.info("Agent stopped")
+
+    def send_to_server(self):
+        """Gửi dữ liệu monitor đến server"""
+        # Tập hợp dữ liệu từ các file
+        files_to_send = [
+            "system_info.json",
+            "resource_usage.json",
+            "services.json",
+            "firewall_info.json"
+        ]
+        
+        monitor_data = {}
+        for file_name in files_to_send:
+            file_path = self.data_dir / file_name
+            if file_path.exists():
+                with open(file_path, 'r') as f:
+                    monitor_data[file_name] = json.load(f)
+            else:
+                logging.warning(f"File {file_path} not found, skipping")
+        
+        if not monitor_data:
+            logging.warning("No monitor data to send")
+            return
+        
+        # Gửi dữ liệu đến server
+        try:
+            headers = {"Authorization": f"Bearer {Config.MONITOR_TOKEN}"}
+            response = self.session.post(
+                f"{Config.MONITOR_URL}",
+                json=monitor_data,
+                headers=headers,
+                timeout=10
+            )
+            response.raise_for_status()
+            logging.info(f"Successfully sent monitor data to server: {response.json()}")
+        except requests.RequestException as e:
+            logging.error(f"Failed to send monitor data to server: {str(e)}")
 
 if __name__ == "__main__":
     agent = ServerAgent()

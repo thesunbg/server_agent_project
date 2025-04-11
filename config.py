@@ -6,3 +6,5 @@ class Config:
     CHECK_INTERVAL = 300  # 5 phút (giây)
     DATA_DIR = "/var/log/server_agent"
     LOG_FILE = "/var/log/server_agent.log"
+    MONITOR_URL = "nguyenvando.comss"
+    MONITOR_TOKEN = "xxx"
