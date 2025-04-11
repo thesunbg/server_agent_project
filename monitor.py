@@ -67,7 +67,6 @@ class ServerMonitor:
                 return
 
             dmi_info = subprocess.check_output(["dmidecode"], universal_newlines=True, stderr=subprocess.STDOUT)
-            parsed_dmi = self.parse_dmidecode(dmi_info)
             
             # Phân tích thành JSON chuẩn
             parsed_dmi = self.parse_dmidecode(dmi_info)
@@ -263,7 +262,7 @@ class ServerMonitor:
     def get_public_ip(self):
         """Lấy địa chỉ IP public của server"""
         try:
-            response = requests.get("curl https://whois.inet.vn/api/ifconfig", timeout=5)
+            response = requests.get("https://whois.inet.vn/api/ifconfig", timeout=5)
             response.raise_for_status()  # Kiểm tra lỗi HTTP
             ip = response.text.strip()
             logging.info(f"Public IP retrieved: {ip}")
