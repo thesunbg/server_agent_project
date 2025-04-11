@@ -92,7 +92,7 @@ class ServerMonitor:
                 "os": self.get_os_info(),
                 "publicip": self.get_public_ip(),
                 "users": self.get_user_accounts(),
-                "login_history": self.login_history(),
+                "login_history": self.get_login_history(),
                 "hardware_info": parsed_dmi,
             }
             
